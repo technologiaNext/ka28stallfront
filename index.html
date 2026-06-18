@@ -494,7 +494,7 @@ function renderGrid(){
 
 function buildWhatsAppLink(p){
   const phone = (p.sellerWhatsApp || '').replace(/[^0-9]/g, '');
-  const msg = `Hi ${p.sellerName}, I'm interested in "${p.name}" (${CURRENCY}${p.price}) listed on Stallfront Bijapur City Makettplace. Is it still available?`;
+  const msg = `Hi ${p.sellerName}, I'm interested in "${p.name}" (${CURRENCY}${p.price}) listed on Stallfront — Bijapur City Marketplace. Is it still available?`;
   return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
 }
 
