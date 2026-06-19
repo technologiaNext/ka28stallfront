@@ -521,9 +521,7 @@ function renderCardAction(p){
   const isOwner = currentUser && p.sellerWhatsApp === currentUser.whatsapp;
 
   if(isOwner){
-    return p.status === 'sold'
-      ? `<button class="btn btn-ghost" data-action="available" data-id="${esc(p.id)}">Mark as available</button>`
-      : `<button class="btn btn-ghost" data-action="sold" data-id="${esc(p.id)}">Mark as sold</button>`;
+ 
   }
   if(p.status === 'sold'){
     return `<div class="sold-note">No longer available</div>`;
