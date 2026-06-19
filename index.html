@@ -152,6 +152,10 @@
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
   .seller-line{font-size:12px; color:var(--ink-soft); margin-top:10px;}
   .body .btn{margin-top:12px; padding:10px 14px; font-size:13.5px; width:100%;}
+  .action-row{display:flex; gap:8px; margin-top:12px;}
+  .action-row .btn{margin-top:0; flex:1;}
+  .btn-danger{background:transparent; color:#A23B3B; border:1.5px solid rgba(162,59,59,.35);}
+  .btn-danger:hover{background:rgba(162,59,59,.08);}
 
   .empty-state{
     text-align:center; padding:70px 20px; color:var(--ink-soft);
@@ -226,7 +230,7 @@
   <div class="login-wrap">
     <div class="login-card">
       <div class="brand-eyebrow">Stallfront</div>
-      <h1>Walk into the Bijapur marketplace</h1>
+      <h1>Walk into the marketplace</h1>
       <p class="sub">Enter your name and WhatsApp number. Buyers will message you there directly — no password needed.</p>
       <div class="stub"></div>
       <form id="loginForm">
@@ -250,7 +254,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Stallfront</h1>
-      <span class="tagline mono">BIJAPUR LOCAL MARKETPLACE</span>
+      <span class="tagline mono">LOCAL MARKETPLACE</span>
     </div>
     <div class="topbar-right">
       <span class="user-chip" id="userChip"></span>
@@ -394,7 +398,12 @@ window.addEventListener('DOMContentLoaded', () => {
   $('productGrid').addEventListener('click', e => {
     const btn = e.target.closest('[data-action]');
     if(!btn) return;
-    handleStatusToggle(btn.dataset.id, btn.dataset.action, btn);
+    const { id, action } = btn.dataset;
+    if(action === 'delete'){
+      handleDelete(id, btn);
+    } else {
+      handleStatusToggle(id, action, btn);
+    }
   });
 });
 
@@ -521,7 +530,11 @@ function renderCardAction(p){
   const isOwner = currentUser && p.sellerWhatsApp === currentUser.whatsapp;
 
   if(isOwner){
- 
+    const toggleBtn = p.status === 'sold'
+      ? `<button class="btn btn-ghost" data-action="available" data-id="${esc(p.id)}">Mark as available</button>`
+      : `<button class="btn btn-ghost" data-action="sold" data-id="${esc(p.id)}">Mark as sold</button>`;
+    const deleteBtn = `<button class="btn btn-danger" data-action="delete" data-id="${esc(p.id)}">Delete</button>`;
+    return `<div class="action-row">${toggleBtn}${deleteBtn}</div>`;
   }
   if(p.status === 'sold'){
     return `<div class="sold-note">No longer available</div>`;
@@ -531,7 +544,7 @@ function renderCardAction(p){
 
 function buildWhatsAppLink(p){
   const phone = String(p.sellerWhatsApp || '').replace(/[^0-9]/g, '');
-  const msg = `Hi ${p.sellerName}, I'm interested in "${p.name}" (${CURRENCY}${p.price}) listed on Stallfront Bijapur Marketplace. Is it still available?`;
+  const msg = `Hi ${p.sellerName}, I'm interested in "${p.name}" (${CURRENCY}${p.price}) listed on Stallfront. Is it still available?`;
   return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
 }
 
@@ -546,6 +559,28 @@ async function handleStatusToggle(id, newStatus, btn){
       toast(newStatus === 'sold' ? 'Marked as sold' : 'Marked as available again');
     } else {
       toast(result.error || 'Could not update listing', 'error');
+      btn.disabled = false;
+    }
+  } catch(err){
+    toast(err.message, 'error');
+    btn.disabled = false;
+  }
+}
+
+async function handleDelete(id, btn){
+  const sure = window.confirm('Delete this listing? This cannot be undone.');
+  if(!sure) return;
+
+  btn.disabled = true;
+  try{
+    const result = await apiPost('deleteProduct', { id, requesterWhatsApp: currentUser.whatsapp });
+    if(result.success){
+      products = products.filter(p => p.id !== id);
+      renderCategoryPills();
+      renderGrid();
+      toast('Listing deleted');
+    } else {
+      toast(result.error || 'Could not delete listing', 'error');
       btn.disabled = false;
     }
   } catch(err){
