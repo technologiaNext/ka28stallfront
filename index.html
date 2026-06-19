@@ -123,8 +123,19 @@
   }
 
   .product-card{position:relative; animation:fadeUp .45s ease both;}
-  .media{aspect-ratio:4/3; border-radius:var(--radius) var(--radius) 0 0; overflow:hidden; background:#e9e4d6;}
+  .media{aspect-ratio:4/3; border-radius:var(--radius) var(--radius) 0 0; overflow:hidden; background:#e9e4d6; position:relative;}
   .media img{width:100%; height:100%; object-fit:cover; display:block;}
+  .product-card.sold .media img{filter:grayscale(45%) brightness(.82);}
+  .sold-stamp{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-9deg);
+    border:3px solid #fff; color:#fff; font-family:'IBM Plex Mono',monospace; font-weight:700;
+    font-size:18px; letter-spacing:.12em; text-transform:uppercase; padding:5px 16px;
+    border-radius:6px; background:rgba(32,40,31,.6);
+  }
+  .sold-note{
+    text-align:center; font-size:13px; color:var(--ink-soft); margin-top:12px; padding:10px;
+    border:1.5px dashed var(--line); border-radius:9px; background:#fbf9f3;
+  }
   .body{background:var(--card); border-radius:0 0 var(--radius) var(--radius); box-shadow:var(--shadow); padding:14px 16px 18px;}
   .body .stub{margin:10px -16px 12px;}
   .row-top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
@@ -140,7 +151,7 @@
   .item-desc{font-size:13.5px; color:var(--ink-soft); margin-top:8px; line-height:1.45;
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
   .seller-line{font-size:12px; color:var(--ink-soft); margin-top:10px;}
-  .body .btn-whatsapp{margin-top:12px; padding:10px 14px; font-size:13.5px;}
+  .body .btn{margin-top:12px; padding:10px 14px; font-size:13.5px; width:100%;}
 
   .empty-state{
     text-align:center; padding:70px 20px; color:var(--ink-soft);
@@ -225,8 +236,8 @@
         </div>
         <div class="field">
           <label for="loginPhone">WhatsApp number</label>
-          <input type="tel" id="loginPhone" placeholder="e.g. 91 98765 43210" required />
-          <div class="hint">Include your country code. Buyers will tap this to message you.</div>
+          <input type="tel" id="loginPhone" placeholder="91XXXXXXXXXX" inputmode="numeric" maxlength="15" required />
+          <div class="hint">Start with 91, followed by your 10-digit mobile number — 12 digits in total.</div>
         </div>
         <button type="submit" class="btn btn-primary" id="loginSubmitBtn">Enter marketplace</button>
       </form>
@@ -315,13 +326,15 @@
 /* ============================================================
    CONFIG — paste your deployed Apps Script Web App URL below
    ============================================================ */
-const API_URL = "https://script.google.com/macros/s/AKfycbx9DLMPwAOYb7yB0Sfc1hGSsNbc9NTBl5OTw7YjzpR4nnEUTvjvvMtBbjMPgCKvn31TOw/exec";
+const API_URL = "REPLACE_WITH_YOUR_APPS_SCRIPT_WEB_APP_URL";
 const CURRENCY = "₹";
 const USER_KEY = "stallfront_user";
 
 /* ---------- tiny helpers ---------- */
 function esc(str){ const d=document.createElement('div'); d.textContent = str==null?'':String(str); return d.innerHTML; }
 function $(id){ return document.getElementById(id); }
+function digitsOnly(raw){ return String(raw || '').replace(/[^0-9]/g, ''); }
+function isValidWhatsApp(digits){ return /^91\d{10}$/.test(digits); }
 
 let toastTimer;
 function toast(msg, type){
@@ -378,6 +391,11 @@ window.addEventListener('DOMContentLoaded', () => {
   $('imageDrop').addEventListener('click', () => $('imageInput').click());
   $('imageInput').addEventListener('change', handleImagePreview);
   $('sellForm').addEventListener('submit', handleSellSubmit);
+  $('productGrid').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if(!btn) return;
+    handleStatusToggle(btn.dataset.id, btn.dataset.action, btn);
+  });
 });
 
 function showScreen(id){
@@ -389,8 +407,12 @@ function showScreen(id){
 async function handleLogin(e){
   e.preventDefault();
   const name = $('loginName').value.trim();
-  const whatsapp = $('loginPhone').value.trim();
+  const whatsapp = digitsOnly($('loginPhone').value);
   if(!name || !whatsapp) return;
+  if(!isValidWhatsApp(whatsapp)){
+    toast('WhatsApp number must start with 91, followed by your 10-digit mobile number (12 digits total)', 'error');
+    return;
+  }
 
   const btn = $('loginSubmitBtn');
   btn.disabled = true; btn.textContent = 'Entering…';
@@ -475,8 +497,11 @@ function renderGrid(){
 
   grid.style.display = 'grid';
   grid.innerHTML = list.map(p => `
-    <div class="product-card">
-      <div class="media"><img src="${esc(p.imageUrl)}" alt="${esc(p.name)}" loading="lazy" /></div>
+    <div class="product-card ${p.status === 'sold' ? 'sold' : ''}">
+      <div class="media">
+        <img src="${esc(p.imageUrl)}" alt="${esc(p.name)}" loading="lazy" />
+        ${p.status === 'sold' ? '<div class="sold-stamp">Sold</div>' : ''}
+      </div>
       <div class="body">
         <div class="row-top">
           <span class="item-name">${esc(p.name)}</span>
@@ -486,16 +511,49 @@ function renderGrid(){
         <div class="stub"></div>
         <p class="item-desc">${esc(p.description)}</p>
         <div class="seller-line">Listed by ${esc(p.sellerName)}</div>
-        <a class="btn btn-whatsapp" target="_blank" rel="noopener" href="${buildWhatsAppLink(p)}">Message seller on WhatsApp</a>
+        ${renderCardAction(p)}
       </div>
     </div>
   `).join('');
 }
 
+function renderCardAction(p){
+  const isOwner = currentUser && p.sellerWhatsApp === currentUser.whatsapp;
+
+  if(isOwner){
+    return p.status === 'sold'
+      ? `<button class="btn btn-ghost" data-action="available" data-id="${esc(p.id)}">Mark as available</button>`
+      : `<button class="btn btn-ghost" data-action="sold" data-id="${esc(p.id)}">Mark as sold</button>`;
+  }
+  if(p.status === 'sold'){
+    return `<div class="sold-note">No longer available</div>`;
+  }
+  return `<a class="btn btn-whatsapp" target="_blank" rel="noopener" href="${buildWhatsAppLink(p)}">Message seller on WhatsApp</a>`;
+}
+
 function buildWhatsAppLink(p){
-  const phone = (p.sellerWhatsApp || '').replace(/[^0-9]/g, '');
+  const phone = String(p.sellerWhatsApp || '').replace(/[^0-9]/g, '');
   const msg = `Hi ${p.sellerName}, I'm interested in "${p.name}" (${CURRENCY}${p.price}) listed on Stallfront. Is it still available?`;
   return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+}
+
+async function handleStatusToggle(id, newStatus, btn){
+  btn.disabled = true;
+  try{
+    const result = await apiPost('setStatus', { id, requesterWhatsApp: currentUser.whatsapp, status: newStatus });
+    if(result.success){
+      const p = products.find(p => p.id === id);
+      if(p) p.status = newStatus;
+      renderGrid();
+      toast(newStatus === 'sold' ? 'Marked as sold' : 'Marked as available again');
+    } else {
+      toast(result.error || 'Could not update listing', 'error');
+      btn.disabled = false;
+    }
+  } catch(err){
+    toast(err.message, 'error');
+    btn.disabled = false;
+  }
 }
 
 /* ---------- sell modal ---------- */
